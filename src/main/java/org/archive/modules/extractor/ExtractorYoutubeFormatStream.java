@@ -5,6 +5,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -38,15 +39,40 @@ public class ExtractorYoutubeFormatStream extends ContentExtractor {
 	private static Logger logger =
             Logger.getLogger(ExtractorYoutubeFormatStream.class.getName());
 
+    /**
+     * Maximum number of videos to extract
+     */
+    {
+    	setExtractLimit(1);
+    }
+    public Integer getExtractLimit(){
+    	return (Integer) kp.get("extractLimit");
+    }
+    public void setExtractLimit(Integer extractLimit){
+    	kp.put("extractLimit", extractLimit);
+    }
+
+   {
+        setItagPriority(new ArrayList<String>());
+    }
+    @SuppressWarnings("unchecked")
+    public List<String> getItagPriority() {
+        return (List<String>) kp.get("itagPriority");
+    }
+    public void setItagPriority(List<String> itagPriority) {
+        kp.put("itagPriority", itagPriority);
+    }
+
 	@Override
 	protected boolean shouldExtract(CrawlURI uri){
-	    if (uri.getFetchStatus() != 200) {
-	    	//verify we are a youtube watch page
-	    	return false;
-	    }
-	    else {
-	    	return true;
-        }                                                                                                                                                                                                  
+	    return true;
+	    // if (uri.getFetchStatus() != 200) {
+	    // 	//verify we are a youtube watch page
+	    // 	return false;
+	    // }
+	    // else {
+	    // 	return true;
+     //    }                                                                                                                                                                                                  
     }
     @Override
     protected boolean innerExtract(CrawlURI uri) {
@@ -59,73 +85,69 @@ public class ExtractorYoutubeFormatStream extends ContentExtractor {
                 Thread.currentThread().getName(), e);
             return false;
         }
-
         Matcher matcher = TextUtils.getMatcher("(?is)ytplayer.config = ([^;]*);", cs);
         if (matcher.find()) {                                                                                                                                                                          
             String jsonStr = matcher.group(1);                                                                                                                                                           
             
             logger.info("Just Extracted: "+jsonStr);
-            
             JSONObject json;
             try {                                                                                                                                                                                        
             json = new JSONObject(jsonStr);
                 if(json.has("args")){                                                                                                                                                                      
-                   JSONObject args = json.getJSONObject("args");
-                   if(args.has("url_encoded_fmt_stream_map")){
-                     String stream_map = args.getString("url_encoded_fmt_stream_map");
-                     
-                     logger.info("Just Extracted: "+stream_map);
-                     
-                     String[] videos = stream_map.split(",");
-                     
-                     //TODO forget why im starting at 1 instead of 0
+                	JSONObject args = json.getJSONObject("args");
+                	if(args.has("url_encoded_fmt_stream_map")) {
+						String stream_map = args.getString("url_encoded_fmt_stream_map");
 
-                     for(int i=1; i < videos.length; i++) {
-                        Matcher videoMatchPre = TextUtils.getMatcher("(?is)sig=([^&]*).*url=(http[^&]*)", videos[i]);
-                        Matcher videoMatchPost = TextUtils.getMatcher("(?is)url=(http[^&]*).*sig=([^&]*)", videos[i]);
-                        String videoUri="";
-                        String prefix,suffix;
-                        
-                        if(videoMatchPre.find()) {
-                        	prefix = videoMatchPre.group(2);
-                        	suffix = videoMatchPre.group(1);
-                        }
-                        else if(videoMatchPost.find()) {
-                        	prefix = videoMatchPost.group(1);
-                    		suffix = videoMatchPost.group(2);
-                        }                        
-                        else
-                           return false;
+						logger.info("Just Extracted: "+stream_map);
 
-               			try {
-                       		videoUri = new java.net.URI(prefix+"%26signature="+suffix).getPath();
-                   		}
-                   		catch(java.net.URISyntaxException e) {
-               				logger.warning("problem decoding link " + prefix+"%26signature="+suffix + " - " + e);
-                   		}
+						String[] videos = stream_map.split(",");
 
-                        TextUtils.recycleMatcher(videoMatchPre);
-                        TextUtils.recycleMatcher(videoMatchPost);
+						for(int i=0; i < videos.length; i++) {
+							String[] videoParams = videos[i].split("\u0026");
 
-                        
-                        logger.info("found video: "+videoUri);
-                        int max = getExtractorParameters().getMaxOutlinks();
-                        String gen204 = videoUri.substring(0,videoUri.lastIndexOf("/"))+"/generate_204";
-                        
-						addOutlink(uri,gen204.toString(), org.archive.modules.extractor.LinkContext.EMBED_MISC, org.archive.modules.extractor.Hop.EMBED);
+							Matcher videoMatchPre = TextUtils.getMatcher("(?is)sig=([^&]*).*url=(http[^&]*)", videos[i]);
+							Matcher videoMatchPost = TextUtils.getMatcher("(?is)url=(http[^&]*).*sig=([^&]*)", videos[i]);
+							String videoUri="";
+							String prefix,suffix;
 
-						logger.warning("creating gen204: "+gen204);
-						logger.warning("newOutlinkCount: "+numberOfLinksExtracted.incrementAndGet());
+							if(videoMatchPre.find()) {
+								prefix = videoMatchPre.group(2);
+								suffix = videoMatchPre.group(1);
+							}
+							else if(videoMatchPost.find()) {
+								prefix = videoMatchPost.group(1);
+								suffix = videoMatchPost.group(2);
+							}                        
+							else
+							   return false;
 
-						addOutlink(uri,videoUri.toString(), org.archive.modules.extractor.LinkContext.EMBED_MISC, org.archive.modules.extractor.Hop.EMBED);
+							try {
+								videoUri = new java.net.URI(prefix+"%26signature="+suffix).getPath();
+							}
+							catch(java.net.URISyntaxException e) {
+								logger.warning("problem decoding link " + prefix+"%26signature="+suffix + " - " + e);
+							}
 
-						logger.warning("adding video: "+videoUri);
-						logger.warning("newOutlinkCount: "+numberOfLinksExtracted.incrementAndGet());
+							TextUtils.recycleMatcher(videoMatchPre);
+							TextUtils.recycleMatcher(videoMatchPost);
 
-                        
-                        
-                     } 
-                   }
+
+							logger.info("found video: "+videoUri);
+							int max = getExtractorParameters().getMaxOutlinks();
+							String gen204 = videoUri.substring(0,videoUri.lastIndexOf("/"))+"/generate_204";
+
+							addOutlink(uri,gen204.toString(), org.archive.modules.extractor.LinkContext.EMBED_MISC, org.archive.modules.extractor.Hop.EMBED);
+
+							logger.warning("creating gen204: "+gen204);
+							logger.warning("newOutlinkCount: "+numberOfLinksExtracted.incrementAndGet());
+
+							addOutlink(uri,videoUri.toString(), org.archive.modules.extractor.LinkContext.EMBED_MISC, org.archive.modules.extractor.Hop.EMBED);
+
+							logger.warning("adding video: "+videoUri);
+							logger.warning("newOutlinkCount: "+numberOfLinksExtracted.incrementAndGet());
+
+						} 
+                	}
                 }
             }
             catch(JSONException e) {                                                                                                                                                                     
